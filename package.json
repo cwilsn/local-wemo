@@ -1,0 +1,22 @@
+{
+  "name": "local-wemo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local browser remote for a Wemo smart plug",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "discover": "node src/discover.js",
+    "check": "node --check src/server.js && node --check src/wemo.js && node --check src/schedule.js && node --check src/discover.js && node --check public/app.js && bash -n scripts/deploy.sh",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.11.2",
+    "node-cron": "4.6.0",
+    "suncalc": "2.1.1"
+  }
+}

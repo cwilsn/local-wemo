@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ee">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Stair Lights">
+  <title>Stair Lights · Local Wemo</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Local Wemo home">
+        <img src="/icon.svg" width="34" height="34" alt="">
+        <span>local<span class="brand-accent">wemo</span></span>
+      </a>
+      <span class="connection" id="connection" role="status"><span class="connection-dot"></span><span id="connectionText">Connecting</span></span>
+    </header>
+    <main>
+      <div class="page-heading">
+        <p class="eyebrow">A LITTLE LIGHT AT HOME</p>
+        <h1 id="deviceName">Stair Lights</h1>
+        <p class="intro">Just a tap away.</p>
+      </div>
+      <p class="notice" id="readOnlyNotice" hidden>Preview mode · power controls and schedules are disabled.</p>
+      <div class="dashboard">
+        <section class="light-card" id="lightCard" data-power="unknown" aria-label="Light control">
+          <div class="light-card-top">
+            <span class="room-label"><span class="room-dot"></span>YOUR LIGHTS</span>
+            <button class="refresh-button" id="refreshButton" type="button" aria-label="Refresh light status">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.6 8a7 7 0 0 1 11.9-2.2L20 8M4 16l2.5 2.2A7 7 0 0 0 18.4 16"/></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+          <div class="light-scene" aria-hidden="true">
+            <svg class="stairs" viewBox="0 0 460 210" fill="none">
+              <defs>
+                <linearGradient id="stair-surface" x1="80" y1="20" x2="380" y2="220" gradientUnits="userSpaceOnUse"><stop stop-color="#485043"/><stop offset="1" stop-color="#222923"/></linearGradient>
+                <radialGradient id="warm-glow"><stop stop-color="#f8c67b" stop-opacity=".32"/><stop offset="1" stop-color="#f8c67b" stop-opacity="0"/></radialGradient>
+                <filter id="glow-blur"><feGaussianBlur stdDeviation="5"/></filter>
+              </defs>
+              <ellipse class="ambient-glow" cx="250" cy="100" rx="155" ry="115" fill="url(#warm-glow)"/>
+              <path d="M82 172h60v-32h59v-32h59V76h59V44h59v151H82z" fill="url(#stair-surface)"/>
+              <path d="M82 172h60v-32h59v-32h59V76h59V44h59" stroke="#6b7364" stroke-width="1.4"/>
+              <path d="M378 44l25 17v151l-25-17V44Z" fill="#18211a"/>
+              <path d="M82 195h296l25 17H107z" fill="#172019"/>
+              <g class="step-glow" stroke="#ffc982" stroke-width="5" stroke-linecap="round" filter="url(#glow-blur)" opacity=".65">
+                <path d="M92 173h41M151 141h41M210 109h41M269 77h41M328 45h41"/>
+              </g>
+              <g class="step-lights" stroke="#f4c78b" stroke-width="2" stroke-linecap="round">
+                <path d="M92 173h41M151 141h41M210 109h41M269 77h41M328 45h41"/>
+              </g>
+              <path d="M56 195h26M403 212h20" stroke="#424b40" stroke-width="1" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="power-status" aria-live="polite" aria-atomic="true">
+            <div><p class="power-label">CURRENT STATE</p><h2 id="powerText">Checking your lights…</h2></div>
+            <span class="state-badge" id="stateBadge">—</span>
+          </div>
+          <button class="power-button" id="powerButton" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10M6.4 5.4a9 9 0 1 0 11.2 0"/></svg>
+            <span id="powerButtonText">Connecting…</span>
+          </button>
+          <p class="light-note" id="lightNote">Getting the latest state from your plug.</p>
+          <p class="control-error" id="controlError" role="alert" hidden></p>
+          <div class="next-event" id="nextEvent"><span class="next-icon" aria-hidden="true">↗</span><span id="nextEventText">You’re in control. Scheduling is paused.</span></div>
+        </section>
+        <section class="schedule-card" aria-labelledby="scheduleTitle">
+          <div class="schedule-heading">
+            <div class="schedule-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4M16 3v4M4 11h16M8 15h3M8 18h6"/></svg></div>
+            <span class="schedule-badge" id="scheduleBadge">PAUSED</span>
+          </div>
+          <h2 id="scheduleTitle">A daily rhythm.</h2>
+          <p class="schedule-intro">A warm welcome, right on time.</p>
+          <form id="scheduleForm">
+            <label class="schedule-toggle-row" for="scheduleEnabled"><span>Enable daily schedule</span><span class="switch"><input id="scheduleEnabled" type="checkbox"><span class="switch-track"></span></span></label>
+            <label class="on-mode-field" for="onMode"><span>Turn lights on</span><select id="onMode" name="onMode"><option value="time">At a set time</option><option value="sunset">At sunset</option></select></label>
+            <div class="time-fields">
+              <label class="time-field" id="onTimeField" for="onTime"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>Lights on</span><input id="onTime" name="onTime" type="time" value="19:00" required></label>
+              <div class="time-field sunset-field" id="sunsetField" hidden><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18M5 21h14M6 17a6 6 0 0 1 12 0M12 2v4M3 9l3 2M21 9l-3 2"/></svg>Sunset today</span><strong id="sunsetTime">Calculating…</strong></div>
+              <label class="time-field" for="offTime"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z"/></svg>Lights off</span><input id="offTime" name="offTime" type="time" value="23:00" required></label>
+            </div>
+            <label class="timezone-field" for="timeZone"><span>Timezone</span><select id="timeZone" name="timeZone"><option value="America/New_York">New York · Eastern</option></select></label>
+            <p class="schedule-hint" id="scheduleHint">Repeats every day. The Pi keeps time for you.</p>
+            <button class="save-button" id="saveButton" type="submit" disabled><span id="saveButtonText">Save schedule</span><span aria-hidden="true">↗</span></button>
+            <p class="schedule-message" id="scheduleMessage" role="status" aria-live="polite"></p>
+          </form>
+          <p class="schedule-footnote" id="scheduleFootnote">Keep your Pi running for scheduled changes.</p>
+        </section>
+      </div>
+      <footer class="page-footer"><span class="footer-dot"></span>At home on your Wi-Fi.<span class="footer-divider">/</span>Made for the little things.</footer>
+    </main>
+  </div>
+</body>
+</html>
