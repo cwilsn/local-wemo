@@ -75,7 +75,7 @@ async function refreshState({ background = false } = {}) {
     buttons();
   }
   try {
-    const state = await api('/api/state');
+    const state = await api('api/state');
     if (version === stateVersion) {
       showState(state);
     }
@@ -169,7 +169,7 @@ $('powerButton').addEventListener('click', async () => {
   buttons();
   $('powerButtonText').textContent = on ? 'Turning on…' : 'Turning off…';
   try {
-    showState(await api('/api/state', { on }));
+    showState(await api('api/state', { on }));
   } catch (error) {
     showError(error);
   } finally {
@@ -199,7 +199,7 @@ $('scheduleForm').addEventListener('submit', async (event) => {
   buttons();
   $('saveButtonText').textContent = 'Saving…';
   try {
-    const schedule = await api('/api/schedule', { enabled: $('scheduleEnabled').checked,
+    const schedule = await api('api/schedule', { enabled: $('scheduleEnabled').checked,
       onMode: $('onMode').value || 'time', onTime: $('onTime').value, offTime: $('offTime').value, timeZone: $('timeZone').value });
     scheduleDirty = false;
     showSchedule(schedule);
@@ -218,11 +218,11 @@ $('scheduleForm').addEventListener('submit', async (event) => {
 async function start() {
   buttons();
   try {
-    const config = await api('/api/config');
+    const config = await api('api/config');
     token = config.token;
     readOnly = config.readOnly;
     $('readOnlyNotice').hidden = !readOnly;
-    showSchedule(await api('/api/schedule'));
+    showSchedule(await api('api/schedule'));
     await refreshState();
   } catch (error) {
     showError(error);
@@ -239,7 +239,7 @@ setInterval(async () => {
   await refreshState({ background: true });
   if (!scheduleDirty) {
     try {
-      showSchedule(await api('/api/schedule'), false);
+      showSchedule(await api('api/schedule'), false);
     } catch {
       // Keep the last saved schedule visible during a temporary connection problem.
     }

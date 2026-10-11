@@ -5,11 +5,11 @@ import { createApp } from '../src/server.js';
 import { WemoPlug } from '../src/wemo.js';
 import { close, fakeWemo, listen } from './helpers.js';
 
-async function fixture(t, { readOnly = false, wemo = {} } = {}) {
+async function fixture(t, { readOnly = false, wemo = {}, publicOrigin } = {}) {
   const fake = await fakeWemo(wemo);
   t.after(() => close(fake.server));
   let stored = { enabled: false, onTime: '19:00', offTime: '23:00', timeZone: 'America/New_York' };
-  const server = await createApp({ readOnly, plug: new WemoPlug({ ip: '127.0.0.1', port: fake.port }),
+  const server = await createApp({ readOnly, publicOrigin, plug: new WemoPlug({ ip: '127.0.0.1', port: fake.port }),
     schedule: { getStatus() { return stored; }, async save(value) { stored = value; return stored; } } });
   const url = await listen(server);
   t.after(() => close(server));
@@ -71,4 +71,85 @@ test('the browser API returns confirmed state when the plug applies the command 
   assert.equal(result.status, 200);
   assert.equal((await result.json()).on, false);
   assert.deepEqual(fake.actions, ['SetBinaryState', 'GetBinaryState']);
+});
+
+async function proxyRequest(url, { headers, method = 'GET', body } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(url, { headers, method }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => resolve({ status: response.statusCode,
+        data: JSON.parse(Buffer.concat(chunks).toString()) }));
+    });
+    request.on('error', reject);
+    request.end(body);
+  });
+}
+
+test('Tailscale HTTPS accepts the configured origin and token through its loopback proxy', async (t) => {
+  const publicOrigin = 'https://pipipi.tailde190.ts.net';
+  const { url, fake } = await fixture(t, { publicOrigin });
+  const headers = { Host: 'pipipi.tailde190.ts.net', 'X-Forwarded-Host': 'pipipi.tailde190.ts.net',
+    'X-Forwarded-Proto': 'https' };
+  const config = await proxyRequest(`${url}/api/config`, { headers });
+  assert.equal(config.status, 200);
+  const state = await proxyRequest(`${url}/api/state`, { headers });
+  assert.equal(state.status, 200);
+  assert.equal(state.data.on, true);
+  const command = await proxyRequest(`${url}/api/state`, { method: 'POST',
+    headers: { ...headers, Origin: publicOrigin, 'X-Wemo-Token': config.data.token,
+      'Content-Type': 'application/json' }, body: '{"on":false}' });
+  assert.equal(command.status, 200);
+  assert.equal(command.data.on, false);
+  assert.deepEqual(fake.actions, ['GetBinaryState', 'SetBinaryState', 'GetBinaryState']);
+  assert.equal((await fetch(`${url}/api/health`)).status, 200);
+});
+
+test('HTTPS proxy support still rejects untrusted hosts, missing proxy headers, and cross-origin writes', async (t) => {
+  const publicOrigin = 'https://pipipi.tailde190.ts.net';
+  const { url, fake, config } = await fixture(t, { publicOrigin });
+  const headers = { Host: 'pipipi.tailde190.ts.net', 'X-Forwarded-Host': 'pipipi.tailde190.ts.net',
+    'X-Forwarded-Proto': 'https' };
+  for (const altered of [{ Host: headers.Host }, { ...headers, 'X-Forwarded-Host': 'evil.example' },
+    { ...headers, Host: 'evil.example' }, { ...headers, 'X-Forwarded-Proto': 'http' }]) {
+    const result = await proxyRequest(`${url}/api/config`, { headers: altered });
+    assert.equal(result.status, 403);
+  }
+  for (const origin of ['https://evil.example', url, 'http://pipipi.tailde190.ts.net']) {
+    const result = await proxyRequest(`${url}/api/state`, { method: 'POST',
+      headers: { ...headers, Origin: origin, 'X-Wemo-Token': config.token,
+        'Content-Type': 'application/json' }, body: '{"on":false}' });
+    assert.equal(result.status, 403);
+  }
+  assert.deepEqual(fake.actions, []);
+});
+
+test('HTTPS proxy support must be explicitly configured with a valid HTTPS origin', async (t) => {
+  const { url, fake } = await fixture(t);
+  const response = await proxyRequest(`${url}/api/state`, { headers: {
+    Host: 'pipipi.tailde190.ts.net', 'X-Forwarded-Host': 'pipipi.tailde190.ts.net',
+    'X-Forwarded-Proto': 'https' } });
+  assert.equal(response.status, 403);
+  for (const publicOrigin of ['http://pipipi.tailde190.ts.net', 'https://pipipi.tailde190.ts.net/lights/',
+    'https://name:password@pipipi.tailde190.ts.net', 'https://pipipi.tailde190.ts.net?test=1']) {
+    await assert.rejects(createApp({ publicOrigin }), /PUBLIC_ORIGIN/);
+  }
+  assert.deepEqual(fake.actions, []);
+});
+
+test('serves the home menu and its assets through the existing app for the HTTPS root proxy', async (t) => {
+  const { url, fake } = await fixture(t);
+  const page = await fetch(`${url}/home/`);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /Welcome home/);
+  assert.match(html, /href="\/pool\/"/);
+  assert.match(html, /href="\/lights\/"/);
+  for (const match of html.matchAll(/(?:href|src)="([^"]+\.(?:css|svg))"/g)) {
+    const response = await fetch(new URL(match[1], `${url}/home/`));
+    assert.equal(response.status, 200);
+    assert.ok((await response.arrayBuffer()).byteLength > 0);
+  }
+  assert.equal((await fetch(`${url}/home/.env`)).status, 404);
+  assert.deepEqual(fake.actions, []);
 });

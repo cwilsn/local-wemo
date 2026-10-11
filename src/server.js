@@ -12,6 +12,9 @@ const assets = new Map([
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/icon.svg', ['icon.svg', 'image/svg+xml']],
+  ['/home/', ['home/index.html', 'text/html; charset=utf-8']],
+  ['/home/style.css', ['home/style.css', 'text/css; charset=utf-8']],
+  ['/home/icon.svg', ['home/icon.svg', 'image/svg+xml']],
 ]);
 
 function json(response, status, value) {
@@ -39,7 +42,12 @@ async function readJson(request) {
   }
 }
 
-export async function createApp({ plug, schedule, readOnly = false } = {}) {
+export async function createApp({ plug, schedule, readOnly = false, publicOrigin } = {}) {
+  const proxyOrigin = publicOrigin ? new URL(publicOrigin) : undefined;
+  if (proxyOrigin && (proxyOrigin.protocol !== 'https:' || proxyOrigin.pathname !== '/'
+    || proxyOrigin.search || proxyOrigin.hash || proxyOrigin.username || proxyOrigin.password)) {
+    throw new Error('PUBLIC_ORIGIN must be an HTTPS origin without a path.');
+  }
   const token = randomBytes(32).toString('hex');
   const files = new Map(await Promise.all([...assets].map(async ([path, [file, type]]) => [
     path, { content: await readFile(new URL(file, publicDirectory)), type },
@@ -55,7 +63,12 @@ export async function createApp({ plug, schedule, readOnly = false } = {}) {
         'localhost', '127.0.0.1', hostname().toLowerCase(), `${hostname().toLowerCase()}.local`,
         request.socket.localAddress?.replace(/^::ffff:/, ''),
       ]);
-      if (!allowedHosts.has(host.hostname)) {
+      const remoteAddress = request.socket.remoteAddress?.replace(/^::ffff:/, '');
+      const fromProxy = proxyOrigin && ['127.0.0.1', '::1'].includes(remoteAddress)
+        && request.headers.host === proxyOrigin.host
+        && request.headers['x-forwarded-host'] === proxyOrigin.host
+        && request.headers['x-forwarded-proto'] === 'https';
+      if (!allowedHosts.has(host.hostname) && !fromProxy) {
         json(response, 403, { error: 'Open this page using the Pi’s hostname or local IP address.' });
         return;
       }
@@ -89,7 +102,7 @@ export async function createApp({ plug, schedule, readOnly = false } = {}) {
       }
       const supplied = Buffer.from(request.headers['x-wemo-token'] || '');
       const expected = Buffer.from(token);
-      if (request.headers.origin !== host.origin || supplied.length !== expected.length
+      if (request.headers.origin !== (fromProxy ? proxyOrigin.origin : host.origin) || supplied.length !== expected.length
         || !timingSafeEqual(supplied, expected)) {
         json(response, 403, { error: 'Refresh this page before making changes.' });
         return;
@@ -133,7 +146,7 @@ async function main() {
     interfaceAddress: process.env.WEMO_INTERFACE });
   const schedule = await new DailySchedule({ plug, readOnly,
     file: fileURLToPath(new URL('../data/schedule.json', import.meta.url)) }).load();
-  const server = await createApp({ plug, schedule, readOnly });
+  const server = await createApp({ plug, schedule, readOnly, publicOrigin: process.env.PUBLIC_ORIGIN });
   server.on('error', (error) => {
     console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use. Choose another PORT in .env.` : error.message);
     schedule.close();

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-async function page({ readOnly = false, offline = false, stateRead } = {}) {
+async function page({ readOnly = false, offline = false, stateRead, basePath = '/' } = {}) {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const script = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
@@ -46,11 +46,13 @@ async function page({ readOnly = false, offline = false, stateRead } = {}) {
   let poll;
   let schedule = { enabled: false, onMode: 'time', sunset: '2026-10-10T22:43:45.913Z', onTime: '19:00', offTime: '23:00', timeZone: 'America/New_York' };
   const writes = [];
+  const requests = [];
   const fetch = async (path, options) => {
+    requests.push(new URL(path, 'https://pipipi.tailde190.ts.net' + basePath).pathname);
     let data;
-    if (path === '/api/config') {
+    if (path === 'api/config') {
       data = { token: 'test-token', readOnly };
-    } else if (path === '/api/state') {
+    } else if (path === 'api/state') {
       if (offline) throw new Error('Plug unavailable');
       if (options.method === 'POST') {
         const value = JSON.parse(options.body);
@@ -62,7 +64,7 @@ async function page({ readOnly = false, offline = false, stateRead } = {}) {
         await stateRead({ read: ++stateReads, on: snapshot });
       }
       data = { name: 'Stair Lights', on: snapshot };
-    } else if (path === '/api/schedule') {
+    } else if (path === 'api/schedule') {
       if (options.method === 'POST') {
         const value = JSON.parse(options.body);
         writes.push({ path, ...value });
@@ -76,7 +78,7 @@ async function page({ readOnly = false, offline = false, stateRead } = {}) {
   };
   vm.runInNewContext(script, { document, fetch, AbortSignal, Intl, Date, setInterval(callback) { poll = callback; } });
   await new Promise((resolve) => setImmediate(resolve));
-  return { element: (id) => document.getElementById(id), writes, document, poll };
+  return { element: (id) => document.getElementById(id), writes, document, poll, requests };
 }
 
 test('phone UI displays verified state and sends one explicit power command per tap', async () => {
@@ -87,7 +89,7 @@ test('phone UI displays verified state and sends one explicit power command per 
   assert.equal(element('connectionText').textContent, 'Connected');
   assert.equal(element('powerButton').attributes['aria-label'], 'Turn off Stair Lights');
   await element('powerButton').fire('click');
-  assert.deepEqual(writes, [{ path: '/api/state', on: false }]);
+  assert.deepEqual(writes, [{ path: 'api/state', on: false }]);
   assert.equal(element('stateBadge').textContent, 'OFF');
   assert.equal(element('powerButtonText').textContent, 'Turn lights on');
 });
@@ -100,7 +102,7 @@ test('schedule form saves an overnight schedule and updates its active state', a
   await element('scheduleForm').fire('input');
   assert.equal(element('scheduleMessage').textContent, 'Unsaved changes');
   await element('scheduleForm').fire('submit');
-  assert.deepEqual(writes, [{ path: '/api/schedule', enabled: true, onMode: 'time', onTime: '18:30', offTime: '01:00', timeZone: 'America/New_York' }]);
+  assert.deepEqual(writes, [{ path: 'api/schedule', enabled: true, onMode: 'time', onTime: '18:30', offTime: '01:00', timeZone: 'America/New_York' }]);
   assert.equal(element('scheduleBadge').textContent, 'ACTIVE');
   assert.match(element('scheduleMessage').textContent, /Saved/);
 });
@@ -149,7 +151,7 @@ test('a slow background poll permits a tap and cannot overwrite the confirmed ch
   await element('powerButton').fire('click');
   release();
   await polling;
-  assert.deepEqual(writes, [{ path: '/api/state', on: false }]);
+  assert.deepEqual(writes, [{ path: 'api/state', on: false }]);
   assert.equal(element('stateBadge').textContent, 'OFF');
   assert.equal(element('powerButtonText').textContent, 'Turn lights on');
   assert.equal(element('controlError').hidden, true);
@@ -200,8 +202,16 @@ test('sunset saves with a fixed off-time even when it matches the unused fixed o
   element('offTime').value = '19:00';
   await element('scheduleForm').fire('input');
   await element('scheduleForm').fire('submit');
-  assert.deepEqual(writes, [{ path: '/api/schedule', enabled: true, onMode: 'sunset',
+  assert.deepEqual(writes, [{ path: 'api/schedule', enabled: true, onMode: 'sunset',
     onTime: '19:00', offTime: '19:00', timeZone: 'America/New_York' }]);
   assert.equal(element('scheduleBadge').textContent, 'ACTIVE');
   assert.equal(element('onTimeField').hidden, true);
+});
+
+test('light controls and scheduling keep API requests under the HTTPS lights path', async () => {
+  const { element, requests } = await page({ basePath: '/lights/' });
+  await element('powerButton').fire('click');
+  await element('scheduleForm').fire('submit');
+  assert.deepEqual(requests.toSorted(), ['/lights/api/config', '/lights/api/schedule',
+    '/lights/api/schedule', '/lights/api/state', '/lights/api/state']);
 });
